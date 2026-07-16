@@ -1,0 +1,72 @@
+{
+  "app": "nutripedia",
+  "version": "1.43",
+  "exportedAt": "2026-07-16T16:45:44.198Z",
+  "quickFormSettings": {
+    "ageMode": "manual",
+    "weightMode": "manual",
+    "heightMode": "manual",
+    "layout": "auto",
+    "showHisPanel": true,
+    "displayTemplate": "{dong_do}\n{dong_sd}\n{ket_luan}",
+    "copyTemplate": "{dong_do}\n{dong_sd}\n{ket_luan}",
+    "copyFontFamily": "Times New Roman",
+    "copyFontSize": "12pt",
+    "copyIndentSpaces": "0",
+    "displayDoWeight": "Cân nặng (kg): {can_nang}",
+    "displayDoHeight": "Chiều cao (cm): {chieu_cao}",
+    "displayDoBmi": "BMI(trẻ >5 tuổi): {bmi} kg/m2",
+    "displayDoSeparator": "    ",
+    "displaySdSeparator": "        ",
+    "displaySdCnt": "CN/T: {cnt}.",
+    "displaySdCct": "CC/T: {cct}.",
+    "displaySdCncc": "CN/CC: {cncc}.",
+    "displaySdBmit": "BMI/T: {bmit}.",
+    "copyDoWeight": "Cân nặng (kg): {can_nang}",
+    "copyDoHeight": "Chiều cao (cm): {chieu_cao}",
+    "copyDoBmi": "BMI(trẻ >5 tuổi): {bmi} kg/m2",
+    "copyDoSeparator": "    ",
+    "copySdSeparator": "        ",
+    "copySdCnt": "CN/T: {cnt}.",
+    "copySdCct": "CC/T: {cct}.",
+    "copySdCncc": "CN/CC: {cncc}.",
+    "copySdBmit": "BMI/T: {bmit}."
+  },
+  "advancedCopySettings": {
+    "template": "{ten}\n{gioi_tuoi}\nCân nặng: {can_nang} kg\nChiều cao: {chieu_cao} cm\n{chi_so}\nKết luận: {ket_luan}\n"
+  },
+  "conclusionLabels": {
+    "wfa": {
+      "severe": "Nhẹ cân nặng",
+      "moderate": "Nhẹ cân vừa",
+      "risk": "Nguy cơ nhẹ cân",
+      "normal": "Bình thường",
+      "high": "Cân nặng cao theo tuổi"
+    },
+    "hfa": {
+      "severe": "Thấp còi nặng",
+      "moderate": "Thấp còi vừa",
+      "risk": "Nguy cơ thấp còi",
+      "normal": "Bình thường",
+      "high": "Chiều cao cao so với tuổi",
+      "veryHigh": "Chiều cao rất cao"
+    },
+    "wfh": {
+      "severe": "Gầy còm nặng",
+      "moderate": "Gầy còm vừa",
+      "risk": "Nguy cơ gầy còm",
+      "normal": "Bình thường",
+      "overweightRisk": "Nguy cơ thừa cân",
+      "overweight": "Thừa cân",
+      "obese": "Béo phì"
+    },
+    "bfa_old": {
+      "severe": "Gầy nặng",
+      "moderate": "Gầy vừa",
+      "risk": "Nguy cơ gầy",
+      "normal": "Bình thường",
+      "overweight": "Thừa cân",
+      "obese": "Béo phì"
+    }
+  }
+}
