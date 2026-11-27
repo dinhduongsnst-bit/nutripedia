@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Đánh giá dinh dưỡng — Bệnh viện Sản - Nhi Sóc Trăng</title>
   <script src="du_lieu_chuan_who.js"></script>
+  <script src="du_lieu_who_chi_tiet.js"></script>
+  <script src="tinh_toan_who.js"></script>
   <style>
     :root {
       --ink: #17252a;
@@ -1478,6 +1480,7 @@
       flex: 0 0 auto;
       margin-bottom: 0;
     }
+    .field-label-row .hint.is-error { color: #c2410c; font-weight: 650; }
     .field-label-row .hint {
       flex: 1 1 auto;
       margin-top: 0;
@@ -1524,6 +1527,12 @@
       font-weight: 700; cursor: pointer; transition: background .2s; text-align: center;
     }
     .unit-toggle:hover { background: #e5f5f1; }
+    .measure-label-row { align-items: center; min-height: 24px; }
+    .measure-toggle {
+      padding: 1px 9px; border-radius: 999px; font-size: 11.5px; line-height: 1.6; white-space: nowrap; flex: 0 0 auto;
+    }
+    .measure-toggle.is-manual { background: #fff4e0; border-color: #f0b44c; color: #9a5b00; }
+    .measure-toggle[hidden] { display: none; }
 
     .control, .input-addon {
       width: 100%; border: 1px solid var(--line); background: #fbfdfc; border-radius: 12px;
@@ -2841,18 +2850,20 @@
         <div class="field">
           <div class="field-label-row">
             <label for="ageValue">Tuổi *</label>
-            <span class="hint" id="ageHint">Nhập tháng tuổi từ 0 đến 60.</span>
+            <span class="hint" id="ageHint">Nhập tháng tuổi từ 0 đến 228.</span>
           </div>
           <div class="age-row">
             <button type="button" class="control unit-toggle" id="ageUnitBtn">Tháng</button>
-            <input class="control" type="number" id="ageValue" min="0" max="60" step="1" inputmode="numeric" autocomplete="off" aria-label="Giá trị tuổi">
+            <input class="control" type="text" id="ageValue" inputmode="decimal" autocomplete="off" aria-label="Giá trị tuổi" aria-describedby="ageHint">
             <input type="hidden" id="ageUnit" value="month">
           </div>
         </div>
 
         <div class="two-col">
           <div class="field">
-            <label for="weight">Cân nặng *</label>
+            <div class="field-label-row measure-label-row">
+              <label for="weight">Cân nặng *</label>
+            </div>
             <div class="input-addon">
               <input type="number" id="weight" min="1" max="200" step="0.1" inputmode="decimal">
               <span>kg</span>
@@ -2860,7 +2871,10 @@
             <div class="hint sd-hint" id="weightSdHint"></div>
           </div>
           <div class="field">
-            <label for="height">Chiều dài/cao *</label>
+            <div class="field-label-row measure-label-row">
+              <label for="height">Chiều dài/cao *</label>
+              <button type="button" class="unit-toggle measure-toggle" id="measureBtn" aria-label="Cách đo: tự theo tuổi, bấm để đổi">Nằm</button>
+            </div>
             <div class="input-addon">
               <input type="number" id="height" min="40" max="220" step="0.1" inputmode="decimal">
               <span>cm</span>
@@ -3409,7 +3423,7 @@
               <label for="quickAgeInput">Tuổi/tháng tuổi *</label>
               <div class="quick-modal-age" id="quickAgeEntry">
                 <button type="button" class="quick-age-unit-toggle" id="quickAgeUnitButton" aria-label="Đơn vị tuổi Tháng, bấm để đổi sang Tuổi">Tháng</button>
-                <input type="number" id="quickAgeInput" class="quick-value-manual" min="0" max="60" step="1" inputmode="numeric" autocomplete="off" placeholder="0-60">
+                <input type="text" id="quickAgeInput" class="quick-value-manual" inputmode="decimal" autocomplete="off" placeholder="0-228">
                 <select id="quickAgeValueSelect" class="quick-value-suggest" hidden aria-label="Chọn tuổi/tháng tuổi"></select>
                 <select id="quickAgeUnitInput" class="quick-hidden-control" aria-hidden="true" tabindex="-1">
                   <option value="month">Tháng</option>
@@ -3468,7 +3482,7 @@
   </div>
 
   <script>
-    // Phiên bản giao diện: v1.43
+    // Phiên bản giao diện: v1.44 (dữ liệu WHO chi tiết theo ngày/0,1 cm, đo nằm/đứng, 60 tháng = BMI/tuổi)
     const MODE_STORAGE_KEY = "nutripedia_active_mode";
     const advancedModeView = document.getElementById("advancedModeView");
     const quickModeView = document.getElementById("quickModeView");
@@ -3785,6 +3799,12 @@
       month: "",
       year: ""
     };
+    const measureBtn = document.getElementById("measureBtn");
+    // Tuổi chính xác theo ngày khi có ngày sinh; chỉ dùng khi ô tuổi vẫn giữ đúng giá trị đã tự điền.
+    let advancedBirthAge = null;
+    let advancedBirthAgeEntry = "";
+    // null = tự theo tuổi (dưới 24 tháng đo nằm, từ 24 tháng đo đứng); "l" | "h" = người dùng chọn.
+    let advancedMeasureManual = null;
 
     function setAdvancedPatientOpen(isOpen) {
       if (!advancedPatientToggle || !advancedPatientContent) return;
@@ -3804,26 +3824,66 @@
 
     function populateAgeOptions(preferredValue = "") {
       const unit = ageUnitInput.value;
-      const minValue = unit === "month" ? 0 : 5;
-      const maxValue = unit === "month" ? 60 : 19;
-
-      ageValueInput.min = String(minValue);
-      ageValueInput.max = String(maxValue);
-      ageValueInput.placeholder = unit === "month" ? "0-60" : "5-19";
-
-      const numericPreferred = Number(preferredValue);
-      const isValidPreferred = preferredValue !== ""
-        && Number.isFinite(numericPreferred)
-        && numericPreferred >= minValue
-        && numericPreferred <= maxValue;
-
-      ageValueInput.value = isValidPreferred ? String(numericPreferred) : "";
-      if (ageHint) {
-        ageHint.textContent = unit === "month"
-          ? 'Nhập tháng tuổi từ 0 đến 60.'
-          : 'Nhập tuổi từ 5 đến 19.';
-      }
+      ageValueInput.placeholder = unit === "month" ? "0-228" : "VD: 7 hoặc 7.11";
+      ageValueInput.value = preferredValue === undefined || preferredValue === null ? "" : String(preferredValue);
+      updateAgeHint();
       updateAnthroReferenceHints();
+    }
+
+    function advancedAgeEntry() {
+      const raw = ageValueInput.value.trim();
+      if (advancedBirthAge && raw === advancedBirthAgeEntry) return { age: advancedBirthAge };
+      if (typeof NutriWHO === "undefined") return { empty: true };
+      return NutriWHO.parseAgeEntry(raw, ageUnitInput.value);
+    }
+
+    function advancedAge() {
+      const entry = advancedAgeEntry();
+      return entry.age && NutriWHO.ageInRange(entry.age) ? entry.age : null;
+    }
+
+    function updateAgeHint() {
+      if (!ageHint) return;
+      const entry = advancedAgeEntry();
+      ageHint.classList.toggle("is-error", Boolean(entry.error));
+      if (entry.empty) {
+        ageHint.textContent = ageUnitInput.value === "month"
+          ? "Nhập tháng tuổi từ 0 đến 228."
+          : "Nhập 7 hoặc 7.11 (= 7 tuổi 11 tháng).";
+        return;
+      }
+      if (entry.error) {
+        ageHint.textContent = entry.error;
+        return;
+      }
+      const age = entry.age;
+      const detail = NutriWHO.isOver5(age)
+        ? `${age.completedMonths} tháng · BMI/tuổi`
+        : (ageUnitInput.value === "year" ? `${age.completedMonths} tháng` : "");
+      ageHint.textContent = `= ${NutriWHO.ageText(age)}${detail ? ` (${detail})` : ""}`;
+    }
+
+    function updateMeasureButton() {
+      if (!measureBtn || typeof NutriWHO === "undefined") return;
+      const age = advancedAge();
+      measureBtn.hidden = Boolean(age && NutriWHO.isOver5(age));
+      const recommended = age ? NutriWHO.recommendedMeasure(age) : "l";
+      const current = advancedMeasureManual || recommended;
+      const isAdjusted = Boolean(age) && current !== recommended;
+      measureBtn.textContent = current === "l" ? "Nằm" : "Đứng";
+      measureBtn.classList.toggle("is-manual", isAdjusted);
+      measureBtn.title = isAdjusted
+        ? `Khác chuẩn theo tuổi: WHO ${current === "h" ? "cộng" : "trừ"} 0,7 cm khi tính. Bấm để đổi.`
+        : "Chuẩn theo tuổi: dưới 24 tháng đo nằm, từ 24 tháng đo đứng. Bấm để đổi.";
+      measureBtn.setAttribute("aria-label", `Cách đo: ${current === "l" ? "đo nằm" : "đo đứng"}. Bấm để đổi.`);
+    }
+
+    function currentHeightAdjustment(age) {
+      if (!age || NutriWHO.isOver5(age)) return 0;
+      const recommended = NutriWHO.recommendedMeasure(age);
+      const current = advancedMeasureManual || recommended;
+      if (current === recommended) return 0;
+      return current === "h" ? 0.7 : -0.7;
     }
 
     function setFormStatus(message = "") {
@@ -3864,48 +3924,38 @@
       return { date, day, month, year };
     }
 
-    function birthDateAgeMonths(date) {
-      const today = new Date();
-      let months = (today.getFullYear() - date.getFullYear()) * 12 + (today.getMonth() - date.getMonth());
-      if (today.getDate() < date.getDate()) months -= 1;
-      return months;
-    }
-
-    function birthDateAgeText(months) {
-      const years = Math.floor(months / 12);
-      const restMonths = months % 12;
-      if (years <= 0) return `${months} tháng`;
-      if (restMonths === 0) return `${years} tuổi`;
-      return `${years} tuổi ${restMonths} tháng`;
-    }
-
     function applyBirthDateToAdvancedAge(options = {}) {
       if (!birthDateInput || !birthDateHint) return false;
       const parsed = parseBirthDateValue(birthDateInput.value);
       if (parsed.empty) {
+        advancedBirthAge = null;
         birthDateHint.textContent = "Nhập 23042020 để hiểu là 23/04/2020.";
+        updateAgeHint();
+        updateAnthroReferenceHints();
         return false;
       }
       if (parsed.error) {
+        advancedBirthAge = null;
         birthDateHint.textContent = parsed.error;
+        updateAgeHint();
+        updateAnthroReferenceHints();
         return false;
       }
 
-      const months = birthDateAgeMonths(parsed.date);
-      const years = Math.floor(months / 12);
-      const exactAge = birthDateAgeText(months);
+      const age = NutriWHO.ageFromBirthDate(parsed.date);
       const formattedDate = `${String(parsed.day).padStart(2, "0")}/${String(parsed.month).padStart(2, "0")}/${parsed.year}`;
-
-      if (months <= 60) {
-        setAdvancedAgeUnit("month", months);
-        birthDateHint.textContent = `Ngày sinh ${formattedDate}; tuổi hiện tại ${exactAge}. Đã điền ${months} tháng.`;
-      } else if (years >= 5 && years <= 19) {
-        setAdvancedAgeUnit("year", years);
-        birthDateHint.textContent = `Ngày sinh ${formattedDate}; tuổi hiện tại ${exactAge} (${months} tháng). Đã điền ${years} tuổi.`;
-      } else {
-        birthDateHint.textContent = "Tuổi hiện tại nằm ngoài giới hạn chuyên sâu: 0–60 tháng hoặc 5–19 tuổi.";
+      if (!age || !NutriWHO.ageInRange(age)) {
+        advancedBirthAge = null;
+        birthDateHint.textContent = "Tuổi hiện tại nằm ngoài giới hạn đánh giá: 0–19 tuổi.";
         return false;
       }
+
+      const unit = NutriWHO.isOver5(age) ? "year" : "month";
+      const entry = NutriWHO.formatAgeEntry(age, unit);
+      advancedBirthAge = age;
+      advancedBirthAgeEntry = entry;
+      setAdvancedAgeUnit(unit, entry);
+      birthDateHint.textContent = `Ngày sinh ${formattedDate}; tuổi hiện tại ${NutriWHO.ageText(age)} (${age.completedMonths} tháng, ${age.days} ngày). Tính theo ngày tuổi chính xác.`;
 
       setFormStatus("");
       updateAnthroReferenceHints();
@@ -3914,16 +3964,8 @@
     }
 
     function advancedAgeMonths() {
-      if (ageValueInput.value === "") return null;
-      const rawAge = Number(ageValueInput.value);
-      if (!Number.isFinite(rawAge)) return null;
-      const unit = ageUnitInput.value;
-      if (unit === "month") {
-        if (rawAge < 0 || rawAge > 60) return null;
-        return Math.round(rawAge);
-      }
-      if (rawAge < 5 || rawAge > 19) return null;
-      return Math.round(rawAge * 12);
+      const age = advancedAge();
+      return age ? age.completedMonths : null;
     }
 
     function sdHintValueText(row, unit, transformValue = value => value) {
@@ -3943,26 +3985,28 @@
     }
 
     function updateAnthroReferenceHints() {
-      if (typeof WHO_DATA === "undefined") return;
+      updateMeasureButton();
+      if (typeof NutriWHO === "undefined" || typeof WHO_DETAIL === "undefined") return;
       const gender = Number(genderInput.value);
-      const ageMonths = advancedAgeMonths();
-      if (![1, 2].includes(gender) || !Number.isFinite(ageMonths)) {
+      const age = advancedAge();
+      if (![1, 2].includes(gender) || !age) {
         setSdHint(weightSdHint, "Mốc SD", "");
         setSdHint(heightSdHint, "Mốc SD", "");
         return;
       }
 
-      if (ageMonths <= 60) {
-        const wfaRow = nearestRow(WHO_DATA.wfa, gender, ageMonths);
-        const hfaRow = nearestRow(WHO_DATA.hfa, gender, ageMonths);
+      if (!NutriWHO.isOver5(age)) {
+        const wfaRow = NutriWHO.referenceRow("wfa", gender, age);
+        const hfaRow = NutriWHO.referenceRow("hfa", gender, age);
+        const adjustment = currentHeightAdjustment(age);
         setSdHint(weightSdHint, "CN/T", sdHintValueText(wfaRow, "kg"));
-        setSdHint(heightSdHint, "CC/T", sdHintValueText(hfaRow, "cm"));
+        setSdHint(heightSdHint, "CC/T", sdHintValueText(hfaRow, "cm", value => value - adjustment));
         return;
       }
 
-      const hfaRow = nearestRow(WHO_DATA.hfa_old, gender, ageMonths);
+      const hfaRow = NutriWHO.referenceRow("hfa", gender, age);
       const heightValue = Number(heightInput.value);
-      const bfaRow = nearestRow(WHO_DATA.bfa_old, gender, ageMonths);
+      const bfaRow = NutriWHO.referenceRow("bfa", gender, age);
       const kgFromBmi = Number.isFinite(heightValue) && heightValue > 0
         ? value => value * Math.pow(heightValue / 100, 2)
         : null;
@@ -3983,7 +4027,10 @@
       birthDateInput.addEventListener("input", () => {
         const digits = birthDateInput.value.replace(/\D/g, "");
         if (digits.length >= 8) applyBirthDateToAdvancedAge();
-        else if (birthDateHint) birthDateHint.textContent = "Nhập 23042020 để hiểu là 23/04/2020.";
+        else {
+          advancedBirthAge = null;
+          if (birthDateHint) birthDateHint.textContent = "Nhập 23042020 để hiểu là 23/04/2020.";
+        }
       });
       birthDateInput.addEventListener("change", () => applyBirthDateToAdvancedAge());
       birthDateInput.addEventListener("keydown", event => {
@@ -3996,8 +4043,20 @@
     ageValueInput.addEventListener("input", () => {
       rememberedAgeValues[ageUnitInput.value] = ageValueInput.value;
       setFormStatus("");
+      updateAgeHint();
       updateAnthroReferenceHints();
     });
+    if (measureBtn) {
+      measureBtn.addEventListener("click", () => {
+        const age = advancedAge();
+        const recommended = age ? NutriWHO.recommendedMeasure(age) : "l";
+        const current = advancedMeasureManual || recommended;
+        const next = current === "l" ? "h" : "l";
+        advancedMeasureManual = next === recommended ? null : next;
+        setFormStatus("");
+        updateAnthroReferenceHints();
+      });
+    }
     ageValueInput.addEventListener("keydown", event => moveFocusOnPlainEnter(event, weightInput));
     weightInput.addEventListener("keydown", event => moveFocusOnPlainEnter(event, heightInput));
     weightInput.addEventListener("input", () => setFormStatus(""));
@@ -4014,8 +4073,15 @@
     ageUnitBtn.addEventListener("click", () => {
       const currentUnit = ageUnitInput.value;
       rememberedAgeValues[currentUnit] = ageValueInput.value;
-
+      const age = advancedAge();
       const nextUnit = currentUnit === "month" ? "year" : "month";
+      if (age) {
+        // Đổi đơn vị giữ nguyên tuổi: 95 tháng ⇄ 7.11
+        const converted = NutriWHO.formatAgeEntry(age, nextUnit);
+        if (advancedBirthAge === age) advancedBirthAgeEntry = converted;
+        setAdvancedAgeUnit(nextUnit, converted);
+        return;
+      }
       setAdvancedAgeUnit(nextUnit, rememberedAgeValues[nextUnit]);
     });
 
@@ -4840,23 +4906,6 @@
       });
     }
 
-    function calculateZ(value, row) {
-      if (!row || !Number.isFinite(value) || value <= 0) return null;
-      const { L, M, S } = row;
-      const z = L === 0
-        ? Math.log(value / M) / S
-        : (Math.pow(value / M, L) - 1) / (L * S);
-      return Number.isFinite(z) ? z : null;
-    }
-
-    function nearestRow(dataset, gender, target) {
-      const rows = dataset.filter(row => row.gender === gender);
-      if (!rows.length) return null;
-      return rows.reduce((best, row) =>
-        Math.abs(row.age - target) < Math.abs(best.age - target) ? row : best
-      );
-    }
-
     function classify(type, z) {
       if (z === null || !Number.isFinite(z)) return { label: "Không xác định", tone: "warn" };
 
@@ -5408,10 +5457,8 @@
       setFormStatus("");
     }
 
-    function ageLabel(months, unit) {
-      if (unit === "month") return `${months} tháng`;
-      const years = Math.round(months / 12);
-      return `${years} tuổi`;
+    function ageLabel(months) {
+      return NutriWHO.ageText(NutriWHO.ageFromMonths(Number(months)));
     }
 
     function runAssessment(event) {
@@ -5420,34 +5467,24 @@
       setFormStatus("");
       setAdvancedCopyStatus("");
 
-      if (typeof WHO_DATA === "undefined") {
-        showError("Không đọc được du_lieu_chuan_who.js. Hãy bảo đảm file dữ liệu WHO nằm cùng thư mục với app.");
+      if (typeof WHO_DATA === "undefined" || typeof WHO_DETAIL === "undefined" || typeof NutriWHO === "undefined") {
+        showError("Không đọc được dữ liệu WHO (du_lieu_chuan_who.js, du_lieu_who_chi_tiet.js, tinh_toan_who.js). Hãy bảo đảm các file nằm cùng thư mục với app.");
         return;
       }
 
       const gender = Number(genderInput.value);
       const unit = document.getElementById("ageUnit").value;
-      
-      const rawAge = Number(document.getElementById("ageValue").value);
       const weight = Number(document.getElementById("weight").value);
       const height = Number(document.getElementById("height").value);
       const childName = document.getElementById("childName").value.trim();
-      const ageMonths = Math.round(unit === "year" ? rawAge * 12 : rawAge);
+      const ageEntry = advancedAgeEntry();
 
-      if (document.getElementById("ageValue").value === "" || ![rawAge, weight, height].every(Number.isFinite) || rawAge < 0) {
+      if (ageEntry.error) {
+        showError(ageEntry.error);
+        return;
+      }
+      if (!ageEntry.age || document.getElementById("weight").value === "" || document.getElementById("height").value === "" || ![weight, height].every(Number.isFinite)) {
         showError("Vui lòng nhập đầy đủ tuổi, cân nặng và chiều cao bằng số hợp lệ.");
-        return;
-      }
-      if (!Number.isInteger(rawAge)) {
-        showError(unit === "month"
-          ? "Tháng tuổi phải là số nguyên từ 0 đến 60."
-          : "Tuổi phải là số nguyên từ 5 đến 19.");
-        return;
-      }
-      if ((unit === "month" && (rawAge < 0 || rawAge > 60)) || (unit === "year" && (rawAge < 5 || rawAge > 19))) {
-        showError(unit === "month"
-          ? "Khi chọn Tháng, giá trị hợp lệ là 0–60."
-          : "Khi chọn Tuổi, giá trị hợp lệ là 5–19 tuổi.");
         return;
       }
       if (weight < 1 || weight > 200 || height < 40 || height > 220) {
@@ -5455,41 +5492,40 @@
         return;
       }
 
-      const bmi = weight / Math.pow(height / 100, 2);
+      const age = ageEntry.age;
+      const ageMonths = age.completedMonths;
+      const ageText = NutriWHO.ageText(age);
+      const result = NutriWHO.assess({ gender, age, weight, height, measure: advancedMeasureManual });
+      if (!result) {
+        showError("Không tính được với dữ liệu đã nhập. Vui lòng kiểm tra lại.");
+        return;
+      }
+      const bmi = result.bmi;
       const metrics = [];
 
-      if (ageMonths <= 60) {
-        const wfaRow = nearestRow(WHO_DATA.wfa, gender, ageMonths);
-        const hfaRow = nearestRow(WHO_DATA.hfa, gender, ageMonths);
-        const wfhInRange = height >= 45 && height <= 110;
-        const wfhRow = wfhInRange ? nearestRow(WHO_DATA.wfh, gender, Math.round(height * 2) / 2) : null;
-
-        const wfaZ = calculateZ(weight, wfaRow);
-        const hfaZ = calculateZ(height, hfaRow);
-        const wfhZ = calculateZ(weight, wfhRow);
+      if (result.group === "under5") {
+        const isLength = result.wfh.table === "wfl";
         metrics.push(
-          { type: "wfa", shortTitle: "CN/T", title: "Cân nặng theo tuổi", subtitle: "Phát hiện nhẹ cân", z: wfaZ, row: wfaRow, unit: "kg", classification: classify("wfa", wfaZ), dataset: WHO_DATA.wfa, gender, xValue: ageMonths, actualValue: weight, xDisplay: "month", xAxisLabel: "Tuổi (tháng)", yAxisLabel: "Cân nặng (kg)" },
-          { type: "hfa", shortTitle: "CC/T", title: "Chiều dài/cao theo tuổi", subtitle: "Phát hiện thấp còi", z: hfaZ, row: hfaRow, unit: "cm", classification: classify("hfa", hfaZ), dataset: WHO_DATA.hfa, gender, xValue: ageMonths, actualValue: height, xDisplay: "month", xAxisLabel: "Tuổi (tháng)", yAxisLabel: "Chiều dài/cao (cm)" },
-          { type: "wfh", shortTitle: "CN/CC", title: "Cân nặng theo chiều dài/cao", subtitle: "Phát hiện gầy còm hoặc thừa cân", z: wfhZ, row: wfhRow, unit: "kg", classification: classify("wfh", wfhZ), dataset: WHO_DATA.wfh, gender, xValue: Math.round(height * 2) / 2, actualValue: weight, xDisplay: "height", xAxisLabel: "Chiều dài/cao (cm)", yAxisLabel: "Cân nặng (kg)" }
+          { type: "wfa", shortTitle: "CN/T", title: "Cân nặng theo tuổi", subtitle: "Phát hiện nhẹ cân", z: result.wfa.z, row: result.wfa.row, unit: "kg", classification: classify("wfa", result.wfa.z), dataset: NutriWHO.chartRows("wfa", gender), gender, xValue: result.wfa.x, actualValue: weight, xDisplay: "month", xAxisLabel: "Tuổi (tháng)", yAxisLabel: "Cân nặng (kg)" },
+          { type: "hfa", shortTitle: "CC/T", title: "Chiều dài/cao theo tuổi", subtitle: "Phát hiện thấp còi", z: result.hfa.z, row: result.hfa.row, unit: "cm", classification: classify("hfa", result.hfa.z), dataset: NutriWHO.chartRows("lhfa", gender), gender, xValue: result.hfa.x, actualValue: result.adjustedHeight, xDisplay: "month", xAxisLabel: "Tuổi (tháng)", yAxisLabel: "Chiều dài/cao (cm)" },
+          { type: "wfh", shortTitle: "CN/CC", title: isLength ? "Cân nặng theo chiều dài" : "Cân nặng theo chiều cao", subtitle: "Phát hiện gầy còm hoặc thừa cân", z: result.wfh.z, row: result.wfh.row, unit: "kg", classification: classify("wfh", result.wfh.z), dataset: NutriWHO.chartRows(result.wfh.table, gender), gender, xValue: result.wfh.x, actualValue: weight, xDisplay: "height", xAxisLabel: isLength ? "Chiều dài nằm (cm)" : "Chiều cao đứng (cm)", yAxisLabel: "Cân nặng (kg)" }
         );
       } else {
-        const hfaRow = nearestRow(WHO_DATA.hfa_old, gender, ageMonths);
-        const bfaRow = nearestRow(WHO_DATA.bfa_old, gender, ageMonths);
-        const hfaZ = calculateZ(height, hfaRow);
-        const bmiZ = calculateZ(bmi, bfaRow);
         metrics.push(
-          { type: "hfa_old", shortTitle: "CC/T", title: "Chiều cao theo tuổi", subtitle: "Đánh giá tăng trưởng chiều cao", z: hfaZ, row: hfaRow, unit: "cm", classification: classify("hfa_old", hfaZ), dataset: WHO_DATA.hfa_old, gender, xValue: ageMonths, actualValue: height, xDisplay: "year", xAxisLabel: "Tuổi (năm)", yAxisLabel: "Chiều cao (cm)" },
-          { type: "bfa_old", shortTitle: "BMI/T", title: "BMI theo tuổi", subtitle: `BMI hiện tại: ${bmi.toFixed(1)} kg/m²`, z: bmiZ, row: bfaRow, unit: "kg/m²", classification: classify("bfa_old", bmiZ), dataset: WHO_DATA.bfa_old, gender, xValue: ageMonths, actualValue: bmi, xDisplay: "year", xAxisLabel: "Tuổi (năm)", yAxisLabel: "BMI (kg/m²)" }
+          { type: "hfa_old", shortTitle: "CC/T", title: "Chiều cao theo tuổi", subtitle: "Đánh giá tăng trưởng chiều cao", z: result.hfa.z, row: result.hfa.row, unit: "cm", classification: classify("hfa_old", result.hfa.z), dataset: NutriWHO.chartRows("hfa2007", gender), gender, xValue: result.hfa.x, actualValue: height, xDisplay: "year", xAxisLabel: "Tuổi (năm)", yAxisLabel: "Chiều cao (cm)" },
+          { type: "bfa_old", shortTitle: "BMI/T", title: "BMI theo tuổi", subtitle: `BMI hiện tại: ${bmi.toFixed(1)} kg/m²`, z: result.bfa.z, row: result.bfa.row, unit: "kg/m²", classification: classify("bfa_old", result.bfa.z), dataset: NutriWHO.chartRows("bfa2007", gender), gender, xValue: result.bfa.x, actualValue: bmi, xDisplay: "year", xAxisLabel: "Tuổi (năm)", yAxisLabel: "BMI (kg/m²)" }
         );
       }
 
       lastMetrics = metrics;
-      const abnormal = metrics.filter(metric => metric.classification.tone !== "good");
+      const abnormal = metrics.filter(metric => Number.isFinite(metric.z) && metric.classification.tone !== "good");
       document.getElementById("reportMeta").textContent =
         `${childName || "Trẻ được đánh giá"} · ${new Date().toLocaleDateString("vi-VN")}`;
-      document.getElementById("sumAge").textContent = `${gender === 1 ? "Nam" : "Nữ"} ${ageLabel(ageMonths, unit)}`;
+      document.getElementById("sumAge").textContent = `${gender === 1 ? "Nam" : "Nữ"} ${ageText}`;
       document.getElementById("sumWeight").textContent = `${weight.toFixed(1)} kg`;
-      document.getElementById("sumHeight").textContent = `${height.toFixed(1)} cm`;
+      document.getElementById("sumHeight").textContent = result.group === "under5"
+        ? `${height.toFixed(1)} cm · ${result.measure === "l" ? "đo nằm" : "đo đứng"}`
+        : `${height.toFixed(1)} cm`;
       document.getElementById("anthroSummaryList").innerHTML = metrics.map(anthropometricSummaryRow).join("");
       document.getElementById("metricList").innerHTML = "";
 
@@ -5502,15 +5538,21 @@
       } else if (abnormal.length) {
         advice.unshift("Nên đánh giá lại số đo và trao đổi với nhân viên y tế nếu kết quả kéo dài hoặc trẻ có triệu chứng bất thường.");
       }
-      if (metrics.some(item => item.type === "wfh" && !item.row)) {
-        advice.push("Không tính được cân nặng theo chiều cao vì chiều cao nằm ngoài dải 45–110 cm của bảng WHO đang sử dụng.");
+      if (result.group === "under5" && result.heightAdjustment) {
+        advice.push(result.heightAdjustment > 0
+          ? `Trẻ dưới 24 tháng nhưng đo đứng: theo WHO cộng 0,7 cm, dùng ${advancedFormatClean(result.adjustedHeight, 1)} cm (chiều dài nằm) để tính.`
+          : `Trẻ từ 24 tháng nhưng đo nằm: theo WHO trừ 0,7 cm, dùng ${advancedFormatClean(result.adjustedHeight, 1)} cm (chiều cao đứng) để tính.`);
+      }
+      if (result.group === "under5" && !result.wfh.inRange) {
+        const isLength = result.wfh.table === "wfl";
+        advice.push(`Không tính được cân nặng theo ${isLength ? "chiều dài" : "chiều cao"} vì số đo ${advancedFormatClean(result.adjustedHeight, 1)} cm nằm ngoài dải ${result.wfh.range[0]}–${result.wfh.range[1]} cm của bảng WHO ${isLength ? "đo nằm (dưới 24 tháng)" : "đo đứng (24–59 tháng)"}.`);
       }
       lastAdvancedResult = {
         childName: childName || "Trẻ được đánh giá",
         gender,
         ageMonths,
         ageUnit: unit,
-        ageText: ageLabel(ageMonths, unit),
+        ageText,
         weight,
         height,
         bmi,
@@ -5628,7 +5670,7 @@
     const quickHeightSuggestBox = document.getElementById("quickHeightSuggestBox");
 
     function quickEmptyDraft() {
-      return { name: "", gender: null, ageValue: null, ageUnit: "month", ageMonths: null, weight: null, height: null };
+      return { name: "", gender: null, ageValue: null, ageUnit: "month", ageMonths: null, age: null, measure: null, weight: null, height: null };
     }
 
     let quickDraft = quickEmptyDraft();
@@ -5863,13 +5905,14 @@
     }
 
     function quickEmptyAgeResult() {
-      return { ageValue: null, ageUnit: "month", ageMonths: null };
+      return { ageValue: null, ageUnit: "month", ageMonths: null, age: null };
     }
 
+    // Ô nhập tay: Tháng 0–228 (đúng như HIS hiện 61, 62… tháng); Tuổi 0–19, gõ 7.11 = 7 tuổi 11 tháng.
     function quickAgeBounds(unit) {
       return unit === "year"
-        ? { min: 5, max: 19, label: "tuổi" }
-        : { min: 0, max: 60, label: "tháng" };
+        ? { min: 0, max: 19, label: "tuổi" }
+        : { min: 0, max: 228, label: "tháng" };
     }
 
     function quickAgeValueInRange(unit, value) {
@@ -5877,74 +5920,85 @@
       return Number.isInteger(value) && value >= bounds.min && value <= bounds.max;
     }
 
-    function quickBuildAgeResult(value, unit) {
+    function quickAgeResultFromAge(age, unit) {
+      if (!age || !NutriWHO.ageInRange(age)) return quickEmptyAgeResult();
       const normalizedUnit = unit === "year" ? "year" : "month";
-      const numericValue = Number(value);
-      if (!quickAgeValueInRange(normalizedUnit, numericValue)) return quickEmptyAgeResult();
       return {
-        ageValue: numericValue,
+        ageValue: NutriWHO.formatAgeEntry(age, normalizedUnit),
         ageUnit: normalizedUnit,
-        ageMonths: normalizedUnit === "year" ? numericValue * 12 : numericValue
+        ageMonths: age.completedMonths,
+        age
       };
+    }
+
+    function quickBuildAgeResult(value, unit) {
+      const numericValue = Number(value);
+      if (!Number.isFinite(numericValue) || numericValue < 0) return quickEmptyAgeResult();
+      const months = unit === "year" ? numericValue * 12 : numericValue;
+      return quickAgeResultFromAge(NutriWHO.ageFromMonths(months), unit);
     }
 
     function quickParseAge(text) {
       // Loại cụm BMI(trẻ >5 tuổi) để không lấy nhầm số 5 tuổi làm tuổi bệnh nhi.
       const cleanText = text.replace(/bmi\s*\([^)]*\)/giu, "BMI ");
+      // Số không dính vào ngày tháng dạng 12/03/2020 hoặc năm 2024.
+      const num = "(?<![\\d\\/.\\-])(\\d{1,4})(?![\\d\\/])";
+      const ok = result => result && Number.isFinite(result.ageMonths) ? result : null;
+      const fromYearsMonths = (years, months) => months <= 11
+        ? ok(quickAgeResultFromAge(NutriWHO.ageFromMonths(years * 12 + months), "year"))
+        : null;
+      const fromUnit = (value, unit) => {
+        const normalized = unit.toLowerCase();
+        if (normalized.startsWith("ngày") || /^d/.test(normalized)) return ok(quickAgeResultFromAge(NutriWHO.ageFromDays(value), "month"));
+        if (normalized.startsWith("tháng") || /^m/.test(normalized)) return ok(quickAgeResultFromAge(NutriWHO.ageFromMonths(value), "month"));
+        return value <= 19 ? ok(quickBuildAgeResult(value, "year")) : null;
+      };
 
-      const labelledCombined = cleanText.match(/tuổi\s*[:\-]?\s*(\d{1,2})\s*(?:tuổi|năm)\s*(?:(\d{1,2})\s*tháng)?/iu);
-      if (labelledCombined) {
-        const years = Number(labelledCombined[1]);
-        const months = Number(labelledCombined[2] || 0);
-        if (months === 0 && quickAgeValueInRange("year", years)) return quickBuildAgeResult(years, "year");
+      // 1. "5 tuổi 3 tháng", "Tuổi: 5 năm 3 tháng"
+      let match = cleanText.match(new RegExp(`${num}\\s*(?:tuổi|năm)\\s*,?\\s*(\\d{1,2})\\s*tháng`, "iu"));
+      if (match) {
+        const result = fromYearsMonths(Number(match[1]), Number(match[2]));
+        if (result) return result;
       }
 
-      const labelledUnit = cleanText.match(/(?:tuổi|tháng\s*tuổi)\s*[:\-]?\s*(\d{1,3})\s*(ngày|tháng|tuổi|năm)\b/iu);
-      if (labelledUnit) {
-        const value = Number(labelledUnit[1]);
-        const unit = labelledUnit[2].toLowerCase();
-        let ageMonths = null;
-        if (unit === "ngày") ageMonths = quickMonthsFromDays(value);
-        else if (unit === "tháng") ageMonths = value;
-        else if (quickAgeValueInRange("year", value)) return quickBuildAgeResult(value, "year");
-        if (Number.isFinite(ageMonths) && quickAgeValueInRange("month", ageMonths)) return quickBuildAgeResult(ageMonths, "month");
+      // 2. Có nhãn: "Tuổi: 63 tháng", "Tuổi: 20 ngày", "Tuổi: 7 tuổi"
+      match = cleanText.match(/(?:tuổi|tháng\s*tuổi)\s*[:\-]?\s*(\d{1,4})\s*(ngày|tháng|tuổi|năm)\b/iu);
+      if (match) {
+        const result = fromUnit(Number(match[1]), match[2]);
+        if (result) return result;
       }
 
-      const dayMatch = quickFirstMatch(cleanText, [
-        /(\d{1,3})\s*ngày(?:\s*tuổi)?\b/iu,
-        /(?:age)\s*[:\-]?\s*(\d{1,3})\s*(?:days?|d)\b/iu
-      ]);
-      if (dayMatch) {
-        const ageMonths = quickMonthsFromDays(Number(dayMatch[1]));
-        if (quickAgeValueInRange("month", ageMonths)) return quickBuildAgeResult(ageMonths, "month");
+      // 3. Không nhãn: "20 ngày", "63 tháng", "7 tuổi"
+      const patterns = [
+        [new RegExp(`${num}\\s*ngày(?:\\s*tuổi)?\\b`, "iu"), "ngày"],
+        [/(?:age)\s*[:\-]?\s*(\d{1,4})\s*(?:days?|d)\b/iu, "ngày"],
+        [new RegExp(`${num}\\s*tháng(?:\\s*tuổi)?\\b`, "iu"), "tháng"],
+        [/(?:age)\s*[:\-]?\s*(\d{1,3})\s*(?:months?|mo)\b/iu, "tháng"],
+        [new RegExp(`${num}\\s*(?:tuổi|năm\\s*tuổi)\\b`, "iu"), "tuổi"],
+        [/(?:age)\s*[:\-]?\s*(\d{1,2})\s*(?:years?|yrs?)\b/iu, "tuổi"]
+      ];
+      for (const [pattern, unit] of patterns) {
+        match = cleanText.match(pattern);
+        if (!match) continue;
+        const result = fromUnit(Number(match[1]), unit);
+        if (result) return result;
       }
 
-      const monthMatch = quickFirstMatch(cleanText, [
-        /(?:tuổi|tháng\s*tuổi)\s*[:\-]?\s*(\d{1,3})\s*tháng/iu,
-        /(\d{1,3})\s*tháng(?:\s*tuổi)?\b/iu,
-        /(?:age)\s*[:\-]?\s*(\d{1,3})\s*(?:months?|mo)\b/iu
-      ]);
-      if (monthMatch) {
-        const ageMonths = Number(monthMatch[1]);
-        if (quickAgeValueInRange("month", ageMonths)) return quickBuildAgeResult(ageMonths, "month");
-      }
-
-      const combined = cleanText.match(/(\d{1,2})\s*(?:tuổi|năm)\s*(?:(\d{1,2})\s*tháng)?/iu);
-      if (combined) {
-        const years = Number(combined[1]);
-        const months = Number(combined[2] || 0);
-        if (months === 0 && quickAgeValueInRange("year", years)) return quickBuildAgeResult(years, "year");
-      }
-
-      const yearMatch = quickFirstMatch(cleanText, [
-        /(?:tuổi|age)\s*[:\-]?\s*(\d{1,2})(?:\s*(?:tuổi|years?|yrs?))?/iu,
-        /(\d{1,2})\s*tuổi\b/iu
-      ]);
-      if (yearMatch) {
-        const years = Number(yearMatch[1]);
-        if (quickAgeValueInRange("year", years)) return quickBuildAgeResult(years, "year");
+      // 4. "Tuổi: N" không ghi đơn vị: ≤ 19 hiểu là tuổi, 20–228 hiểu là tháng (HIS hay ghi tháng).
+      match = cleanText.match(/(?:tuổi|age)\s*[:\-]?\s*(\d{1,3})(?![\d\/.,])/iu);
+      if (match) {
+        const value = Number(match[1]);
+        const result = value <= 19 ? fromUnit(value, "tuổi") : fromUnit(value, "tháng");
+        if (result) return result;
       }
       return quickEmptyAgeResult();
+    }
+
+    // Cách đo chỉ lấy khi văn bản ghi rõ; nếu không, mặc định theo tuổi (dưới 24 tháng nằm, từ 24 tháng đứng).
+    function quickParseMeasure(text) {
+      if (/(?:đo|tư\s*thế)\s*nằm|\(\s*nằm\s*\)/iu.test(text)) return "l";
+      if (/(?:đo|tư\s*thế)\s*đứng|\(\s*đứng\s*\)/iu.test(text)) return "h";
+      return null;
     }
 
     function quickParseMeasurement(text, type) {
@@ -5972,6 +6026,8 @@
         ageValue: age.ageValue,
         ageUnit: age.ageUnit,
         ageMonths: age.ageMonths,
+        age: age.age,
+        measure: quickParseMeasure(text),
         weight: quickParseMeasurement(text, "weight"),
         height: quickParseMeasurement(text, "height")
       };
@@ -5979,10 +6035,7 @@
 
     function quickAgeText(data) {
       if (!Number.isFinite(data.ageMonths)) return "Chưa nhận diện";
-      if (data.ageMonths <= 60) return `${data.ageMonths} tháng`;
-      const years = Math.floor(data.ageMonths / 12);
-      const months = data.ageMonths % 12;
-      return months ? `${years} tuổi ${months} tháng` : `${years} tuổi`;
+      return NutriWHO.ageText(data.age || NutriWHO.ageFromMonths(data.ageMonths));
     }
 
     function quickRenderDetected(data) {
@@ -6031,9 +6084,7 @@
       quickAgeUnitInput.value = nextUnit;
       quickAgeUnitButton.textContent = nextUnit === "year" ? "Tuổi" : "Tháng";
       quickAgeUnitButton.setAttribute("aria-label", nextUnit === "year" ? "Đơn vị tuổi Tuổi, bấm để đổi sang Tháng" : "Đơn vị tuổi Tháng, bấm để đổi sang Tuổi");
-      quickAgeInput.min = String(bounds.min);
-      quickAgeInput.max = String(bounds.max);
-      quickAgeInput.placeholder = `${bounds.min}-${bounds.max}`;
+      quickAgeInput.placeholder = nextUnit === "year" ? "VD: 7 hoặc 7.11" : `${bounds.min}-${bounds.max}`;
       quickPopulateAgeSelect(quickAgeInput.value);
     }
     function quickPopulateAgeSelect(preferredValue = null) {
@@ -6056,7 +6107,7 @@
     function quickPrefillModal(data) {
       quickNameInput.value = data.name || "";
       quickSetGenderUI(data.gender || 1);
-      quickAgeInput.value = Number.isFinite(data.ageValue) ? data.ageValue : "";
+      quickAgeInput.value = data.ageValue !== null && data.ageValue !== undefined ? String(data.ageValue) : "";
       quickSetAgeUnitUI(data.ageUnit || "month");
       quickWeightInput.value = Number.isFinite(data.weight) ? quickFormatClean(data.weight, 1) : "";
       quickHeightInput.value = Number.isFinite(data.height) ? quickFormatClean(data.height, 1) : "";
@@ -6086,12 +6137,13 @@
     function quickModalCurrentContext() {
       const gender = Number(quickGenderInput.value);
       const ageUnit = quickAgeUnitInput.value === "year" ? "year" : "month";
-      const ageSource = quickFormSettings.ageMode === "suggest" && !quickAgeValueSelect.hidden ? quickAgeValueSelect.value : quickAgeInput.value;
-      const ageValue = quickNumber(ageSource);
-      const normalizedAgeValue = Number.isFinite(ageValue) ? ageValue : null;
-      const ageMonths = quickAgeValueInRange(ageUnit, normalizedAgeValue)
-        ? (ageUnit === "year" ? normalizedAgeValue * 12 : normalizedAgeValue)
-        : null;
+      const ageSource = String((quickFormSettings.ageMode === "suggest" && !quickAgeValueSelect.hidden ? quickAgeValueSelect.value : quickAgeInput.value) ?? "").trim();
+      const parsedAge = NutriWHO.parseAgeEntry(ageSource, ageUnit);
+      let age = parsedAge.age && NutriWHO.ageInRange(parsedAge.age) ? parsedAge.age : null;
+      // Giữ tuổi chính xác (ví dụ "20 ngày" từ HIS) khi người dùng không sửa ô tuổi.
+      if (quickDraft && quickDraft.age && ageSource === String(quickDraft.ageValue ?? "") && ageUnit === quickDraft.ageUnit) age = quickDraft.age;
+      const normalizedAgeValue = age ? ageSource : null;
+      const ageMonths = age ? age.completedMonths : null;
       const weightSource = quickFormSettings.weightMode === "suggest" && !quickWeightSelect.hidden ? quickWeightSelect.value : quickWeightInput.value;
       const heightSource = quickFormSettings.heightMode === "suggest" && !quickHeightSelect.hidden ? quickHeightSelect.value : quickHeightInput.value;
       return {
@@ -6099,6 +6151,9 @@
         ageValue: normalizedAgeValue,
         ageUnit,
         ageMonths,
+        age,
+        ageError: parsedAge.error || "",
+        measure: quickDraft ? quickDraft.measure || null : null,
         weight: quickNumber(weightSource),
         height: quickNumber(heightSource)
       };
@@ -6114,8 +6169,8 @@
     function quickBuildManualSupplement(data) {
       const lines = [];
       const genderText = data.gender === 1 ? "Nam" : data.gender === 2 ? "Nữ" : "";
-      const ageText = Number.isFinite(data.ageValue)
-        ? `Tuổi: ${quickFormatClean(data.ageValue, data.ageUnit === "year" ? 1 : 0)} ${data.ageUnit === "year" ? "tuổi" : "tháng"}`
+      const ageText = Number.isFinite(data.ageMonths)
+        ? `Tuổi: ${NutriWHO.ageText(data.age || NutriWHO.ageFromMonths(data.ageMonths))}`
         : "";
       const measureParts = [];
       if (Number.isFinite(data.weight)) measureParts.push(`Cân nặng (kg): ${quickFormatClean(data.weight, 1)}`);
@@ -6264,29 +6319,32 @@
       if (quickFormSettings.heightMode === "suggest") quickPopulateMeasurementSelect("height");
     }
 
+    function quickContextAge(context) {
+      if (context.age) return context.age;
+      return Number.isFinite(context.ageMonths) ? NutriWHO.ageFromMonths(context.ageMonths) : null;
+    }
+
     function quickCenterByAge(kind, context) {
-      if (![1, 2].includes(context.gender) || !Number.isFinite(context.ageMonths)) return null;
+      const age = quickContextAge(context);
+      if (![1, 2].includes(context.gender) || !age) return null;
       if (kind === "weight") {
-        if (context.ageMonths > 60) return null;
-        const row = nearestRow(WHO_DATA.wfa, context.gender, context.ageMonths);
+        if (NutriWHO.isOver5(age)) return null;
+        const row = NutriWHO.referenceRow("wfa", context.gender, age);
         return row && Number.isFinite(row.M) ? row.M : null;
       }
-      const dataset = context.ageMonths <= 60 ? WHO_DATA.hfa : WHO_DATA.hfa_old;
-      const row = nearestRow(dataset, context.gender, context.ageMonths);
+      const row = NutriWHO.referenceRow("hfa", context.gender, age);
       return row && Number.isFinite(row.M) ? row.M : null;
     }
 
     function quickWeightCenterByHeight(context) {
-      if (![1, 2].includes(context.gender) || !Number.isFinite(context.height)) return null;
-      if (Number.isFinite(context.ageMonths) && context.ageMonths <= 60 && context.height >= 45 && context.height <= 110) {
-        const row = nearestRow(WHO_DATA.wfh, context.gender, Math.round(context.height * 2) / 2);
+      const age = quickContextAge(context);
+      if (![1, 2].includes(context.gender) || !Number.isFinite(context.height) || !age) return null;
+      if (!NutriWHO.isOver5(age)) {
+        const row = NutriWHO.referenceRow("wfh", context.gender, age, context.height);
         return row && Number.isFinite(row.M) ? row.M : null;
       }
-      if (Number.isFinite(context.ageMonths) && context.ageMonths > 60) {
-        const row = nearestRow(WHO_DATA.bfa_old, context.gender, context.ageMonths);
-        return row && Number.isFinite(row.M) ? row.M * Math.pow(context.height / 100, 2) : null;
-      }
-      return null;
+      const row = NutriWHO.referenceRow("bfa", context.gender, age);
+      return row && Number.isFinite(row.M) ? row.M * Math.pow(context.height / 100, 2) : null;
     }
 
     function quickBuildSuggestionValues(center, config) {
@@ -6318,7 +6376,7 @@
         if (Number.isFinite(heightCenter)) {
           groups.push({
             key: "height",
-            label: context.ageMonths > 60 ? "Theo chiều cao/BMI" : "Theo chiều cao - CN/CC",
+            label: context.ageMonths >= 60 ? "Theo chiều cao/BMI" : "Theo chiều cao - CN/CC",
             center: quickNormalizePickerValue(kind, heightCenter),
             values: quickBuildSuggestionValues(heightCenter, config)
           });
@@ -6470,6 +6528,9 @@
         ageValue: quickAgeField.classList.contains("is-hidden") ? quickDraft.ageValue : modalData.ageValue,
         ageUnit: quickAgeField.classList.contains("is-hidden") ? quickDraft.ageUnit : modalData.ageUnit,
         ageMonths: quickAgeField.classList.contains("is-hidden") ? quickDraft.ageMonths : modalData.ageMonths,
+        age: quickAgeField.classList.contains("is-hidden") ? quickDraft.age : modalData.age,
+        ageError: quickAgeField.classList.contains("is-hidden") ? "" : modalData.ageError,
+        measure: quickDraft.measure || null,
         weight: quickWeightField.classList.contains("is-hidden") ? quickDraft.weight : modalData.weight,
         height: quickHeightField.classList.contains("is-hidden") ? quickDraft.height : modalData.height
       };
@@ -6478,10 +6539,11 @@
     function quickValidateData(data) {
       if (![1, 2].includes(data.gender)) return "Vui lòng nhập đủ giới tính.";
       const ageUnit = data.ageUnit === "year" ? "year" : "month";
-      if (!quickAgeValueInRange(ageUnit, data.ageValue) || !Number.isFinite(data.ageMonths)) {
+      if (!Number.isFinite(data.ageMonths) || data.ageMonths < 0 || data.ageMonths > 228) {
+        if (data.ageError) return data.ageError;
         return ageUnit === "year"
-          ? "Tuổi phải là số nguyên từ 5 đến 19."
-          : "Tháng tuổi phải là số nguyên từ 0 đến 60.";
+          ? "Nhập tuổi dạng 7 hoặc 7.11 (7 tuổi 11 tháng), từ 0 đến 19 tuổi."
+          : "Tháng tuổi phải là số nguyên từ 0 đến 228.";
       }
       const missing = quickMissingFields(data).filter(item => item !== "giới tính" && item !== "tuổi/tháng tuổi");
       if (missing.length) return `Vui lòng nhập đủ ${missing.join(", ")}.`;
@@ -6493,31 +6555,22 @@
     function quickBuildMetrics(data) {
       const bmi = data.weight / Math.pow(data.height / 100, 2);
       const metrics = [];
-      if (data.ageMonths <= 60) {
-        const wfaRow = nearestRow(WHO_DATA.wfa, data.gender, data.ageMonths);
-        const hfaRow = nearestRow(WHO_DATA.hfa, data.gender, data.ageMonths);
-        const wfhRow = data.height >= 45 && data.height <= 110
-          ? nearestRow(WHO_DATA.wfh, data.gender, Math.round(data.height * 2) / 2)
-          : null;
-        const wfaZ = calculateZ(data.weight, wfaRow);
-        const hfaZ = calculateZ(data.height, hfaRow);
-        const wfhZ = calculateZ(data.weight, wfhRow);
+      const age = data.age || NutriWHO.ageFromMonths(data.ageMonths);
+      const result = NutriWHO.assess({ gender: data.gender, age, weight: data.weight, height: data.height, measure: data.measure || null });
+      if (!result) return { metrics, bmi };
+      if (result.group === "under5") {
         metrics.push(
-          { type: "wfa", label: "CÂN NẶNG/TUỔI", z: wfaZ, classification: classify("wfa", wfaZ) },
-          { type: "hfa", label: "CHIỀU CAO/TUỔI", z: hfaZ, classification: classify("hfa", hfaZ) },
-          { type: "wfh", label: "CÂN NẶNG/CHIỀU CAO", z: wfhZ, classification: classify("wfh", wfhZ) }
+          { type: "wfa", label: "CÂN NẶNG/TUỔI", z: result.wfa.z, classification: classify("wfa", result.wfa.z) },
+          { type: "hfa", label: "CHIỀU CAO/TUỔI", z: result.hfa.z, classification: classify("hfa", result.hfa.z) },
+          { type: "wfh", label: "CÂN NẶNG/CHIỀU CAO", z: result.wfh.z, classification: classify("wfh", result.wfh.z) }
         );
       } else {
-        const hfaRow = nearestRow(WHO_DATA.hfa_old, data.gender, data.ageMonths);
-        const bfaRow = nearestRow(WHO_DATA.bfa_old, data.gender, data.ageMonths);
-        const hfaZ = calculateZ(data.height, hfaRow);
-        const bmiZ = calculateZ(bmi, bfaRow);
         metrics.push(
-          { type: "hfa_old", label: "CHIỀU CAO/TUỔI", z: hfaZ, classification: classify("hfa_old", hfaZ) },
-          { type: "bfa_old", label: "BMI/TUỔI", z: bmiZ, classification: classify("bfa_old", bmiZ) }
+          { type: "hfa_old", label: "CHIỀU CAO/TUỔI", z: result.hfa.z, classification: classify("hfa_old", result.hfa.z) },
+          { type: "bfa_old", label: "BMI/TUỔI", z: result.bfa.z, classification: classify("bfa_old", result.bfa.z) }
         );
       }
-      return { metrics, bmi };
+      return { metrics, bmi, result };
     }
 
     function quickFormatDecimal(value, digits = 1) {
@@ -6576,12 +6629,12 @@
 
     function quickMainConclusion(data, metrics) {
       const wfa = quickMetricValue(metrics, "wfa");
-      const hfa = quickMetricValue(metrics, data.ageMonths <= 60 ? "hfa" : "hfa_old");
+      const hfa = quickMetricValue(metrics, data.ageMonths < 60 ? "hfa" : "hfa_old");
       const wfh = quickMetricValue(metrics, "wfh");
       const bfa = quickMetricValue(metrics, "bfa_old");
       const candidates = [];
 
-      if (data.ageMonths <= 60) {
+      if (data.ageMonths < 60) {
         if (quickMetricIsAbnormal(wfh)) candidates.push(wfh);
         if (quickMetricIsAbnormal(hfa)) candidates.push(hfa);
         if (quickMetricIsAbnormal(wfa)) candidates.push(wfa);
@@ -6602,7 +6655,7 @@
       const person = data.name || "Không rõ tên";
       const gender = data.gender === 1 ? "Nam" : "Nữ";
       const wfa = quickMetricValue(metrics, "wfa");
-      const hfa = quickMetricValue(metrics, data.ageMonths <= 60 ? "hfa" : "hfa_old");
+      const hfa = quickMetricValue(metrics, data.ageMonths < 60 ? "hfa" : "hfa_old");
       const wfh = quickMetricValue(metrics, "wfh");
       const bfa = quickMetricValue(metrics, "bfa_old");
       const bmiText = quickFormatBMI(bmi);
@@ -6848,8 +6901,8 @@
     }
 
     function quickRenderResult(data) {
-      if (typeof WHO_DATA === "undefined") {
-        quickSetStatus("Không đọc được du_lieu_chuan_who.js. Hãy đặt file dữ liệu WHO cùng thư mục với app.", "error");
+      if (typeof WHO_DATA === "undefined" || typeof WHO_DETAIL === "undefined" || typeof NutriWHO === "undefined") {
+        quickSetStatus("Không đọc được dữ liệu WHO (du_lieu_chuan_who.js, du_lieu_who_chi_tiet.js, tinh_toan_who.js). Hãy đặt các file cùng thư mục với app.", "error");
         return;
       }
       const validationError = quickValidateData(data);
@@ -7026,7 +7079,7 @@
     function settingsJsonPayload() {
       return {
         app: "nutripedia",
-        version: "1.43",
+        version: "1.44",
         exportedAt: new Date().toISOString(),
         quickFormSettings: quickSanitizeFormSettings(quickFormSettings),
         advancedCopySettings: sanitizeAdvancedCopySettings(advancedCopySettings),
@@ -7261,14 +7314,17 @@
 
     quickAgeUnitButton.addEventListener("click", () => {
       const oldUnit = quickAgeUnitInput.value === "year" ? "year" : "month";
-      const current = quickNumber(quickFormSettings.ageMode === "suggest" && !quickAgeValueSelect.hidden ? quickAgeValueSelect.value : quickAgeInput.value);
-      let nextValue = current;
-      if (Number.isFinite(current)) nextValue = oldUnit === "year" ? Math.round(current * 12) : Math.round(current / 12);
+      const currentAge = quickModalCurrentContext().age;
       const nextUnit = oldUnit === "year" ? "month" : "year";
       quickSetAgeUnitUI(nextUnit);
-      const nextValueIsValid = quickAgeValueInRange(nextUnit, nextValue);
-      quickAgeInput.value = nextValueIsValid ? String(nextValue) : "";
-      quickAgeValueSelect.value = nextValueIsValid ? String(nextValue) : "";
+      // Đổi đơn vị giữ nguyên tuổi: 95 tháng ⇄ 7.11
+      const nextValue = currentAge ? NutriWHO.formatAgeEntry(currentAge, nextUnit) : "";
+      if (currentAge && quickDraft && quickDraft.age === currentAge) {
+        quickDraft.ageValue = nextValue;
+        quickDraft.ageUnit = nextUnit;
+      }
+      quickAgeInput.value = nextValue;
+      quickAgeValueSelect.value = quickAgeValueInRange(nextUnit, Number(nextValue)) ? nextValue : "";
       quickRefreshSuggestions();
       quickRefreshSelectSuggestions();
       quickUpsertManualSupplement();
